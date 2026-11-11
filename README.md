@@ -47,7 +47,9 @@ Chromecast ──GET──> laptop :8765 (tiny proxy) ──GET + Referer/UA─�
    (`hlsSegmentFormat: fmp4`). The Chromecast does the decoding with its own player, like Netflix does.
    The laptop only passes bytes through: no re-encoding, no remuxing.
 4. If you pass a master playlist, it picks the best rendition that is at most 1920 px wide.
-5. Control works from the same window (`tv>` prompt) or from any other terminal (`tv pause`), because
+5. It closes itself when the movie ends, when something else starts playing on the TV, or when the TV
+   is unreachable for about two minutes (TV turned off), so nothing stays running in the background.
+6. Control works from the same window (`tv>` prompt) or from any other terminal (`tv pause`), because
    every command just opens a new Cast connection to the device.
 
 About 250 lines of Python, one dependency ([pychromecast](https://github.com/home-assistant-libs/pychromecast)).

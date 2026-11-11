@@ -17,7 +17,7 @@ Options:
 
 Defaults can live in ~/.tvcast.json: {"device": "Living Room", "quality": "720p", "referer": "https://example.com/"}
 """
-import json, re, socket, subprocess, sys, threading, time, urllib.parse, urllib.request
+import json, os, re, socket, subprocess, sys, threading, time, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -97,6 +97,37 @@ def devices():
     for c in casts:
         print(f"{c.cast_info.friendly_name}  ({c.cast_info.host}, {c.cast_info.model_name})")
     browser.stop_discovery()
+
+
+MEDIA_RECEIVER = "CC1AD845"  # the Chromecast's Default Media Receiver app
+
+
+def watch(cc, mc, done, every=30, offline_limit=4):
+    """Call done(reason) when the movie ends, another app takes over the TV, or the TV goes away."""
+    seen_playing, offline = False, 0
+    while True:
+        time.sleep(every)
+        try:
+            connected = cc.socket_client.is_connected
+        except Exception:
+            connected = False
+        if not connected:
+            offline += 1
+            if offline >= offline_limit:
+                return done("Lost the Chromecast (TV off?).")
+            continue
+        offline = 0
+        if seen_playing and cc.app_id != MEDIA_RECEIVER:
+            return done("Something else is playing on the TV now.")
+        try:
+            mc.update_status(); time.sleep(1)
+        except Exception:
+            continue
+        state = mc.status.player_state
+        if state in ("PLAYING", "PAUSED", "BUFFERING"):
+            seen_playing = True
+        elif seen_playing and state in ("IDLE", "UNKNOWN"):
+            return done(f"Playback ended ({(mc.status.idle_reason or 'stopped').lower()}).")
 
 
 def fetch(url, headers):
@@ -208,6 +239,12 @@ def cast(url):
     mc.block_until_active(timeout=30)
     print(f"Casting to {cc.cast_info.friendly_name}. Keep this window open while you watch.")
     print("Commands: pause, play, seek 48, +30, -30, status, quit (stops playback)")
+
+    def done(reason):  # runs on the watcher thread, so exit the whole process from here
+        print(f"\n{reason} Closing tvcast.")
+        srv.shutdown(); browser.stop_discovery()
+        os._exit(0)
+    threading.Thread(target=watch, args=(cc, mc, done), daemon=True).start()
     try:
         while True:
             line = input("tv> ").strip().split()
